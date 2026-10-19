@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "strict": true,
+    "outDir": "dist",
+    "types": ["powerbi-visuals-api"],
+    "skipLibCheck": true,
+    "lib": ["ES2019", "DOM"]
+  },
+  "files": [
+    "src/visual.ts",
+    "src/declarations.d.ts",
+    "src/settings.ts"
+  ]
+}

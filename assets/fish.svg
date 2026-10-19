@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="512" height="512" role="img" aria-labelledby="title desc">
+  <title>Icono de pez</title>
+  <desc>Icono 2D minimalista de un pez, formato SVG. Escalable y hereda el color actual.</desc>
+  <!-- Usa currentColor para facilitar el recolor desde CSS o atributos -->
+  <!-- Cuerpo -->
+  <path d="M4 12
+           Q 10 6 16 12
+           Q 10 18 4 12 Z"
+        fill="currentColor"/>
+  <!-- Cola -->
+  <polygon points="4,12 2,9 2,15" fill="currentColor"/>
+  <!-- Aleta superior -->
+  <path d="M9 10 Q 10 8 12 9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Aleta inferior -->
+  <path d="M9 14 Q 10 16 12 15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Ojo -->
+  <circle cx="14.5" cy="11.5" r="1.2" fill="#fff"/>
+  <circle cx="14.5" cy="11.5" r="0.6" fill="currentColor"/>
+</svg>

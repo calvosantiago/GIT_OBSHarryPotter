@@ -1,0 +1,21 @@
+{
+  "visual": {
+    "name": "ucmaAnimalSwarm",
+    "displayName": "ucmaAnimalSwarm",
+    "guid": "ucmaAnimalSwarmE3585D72A86C4A209E34B930D63E78E6",
+    "visualClassName": "Visual",
+    "version": "1.0.5.9",
+    "description": "Dashboard visual for animal swarm simulation",
+    "supportUrl": "www.prueba.com",
+    "gitHubUrl": ""
+  },
+  "apiVersion": "5.3.0",
+  "author": { "name": "Santiago", "email": "santiago.calvo@planetaformacion.com" },
+  "assets": { "icon": "assets/icon.png" },
+  "externalJS": [],
+  "style": "style/visual.less",
+  "capabilities": "capabilities.json",
+  "dependencies": "dependencies.json",
+  "stringResources": [],
+  "version": "1.0.5.9"
+}

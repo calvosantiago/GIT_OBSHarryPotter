@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <!-- Fondo más claro -->
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#34C0F3"></stop>
+      <stop offset="60%" stop-color="#1A89B6"></stop>
+      <stop offset="100%" stop-color="#0F5F87"></stop>
+    </linearGradient>
+    <style>
+      :root{
+        --stroke:#0b2a3a;           /* contorno */
+        --algae1:#39B7D5;           /* hojas 1 (un poco más claras) */
+        --algae2:#2798B8;           /* hojas 2 */
+        --sand:#E7C59A;             /* rocas/suelo */
+        --bubble:#e9f8ff;           /* burbuja más luminosa */
+      }
+      .bg{fill:url(#bg)}
+      .outline{stroke:var(--stroke); stroke-width:6; stroke-linecap:round; stroke-linejoin:round}
+      .alga path{fill:var(--algae1)}
+      .alga .alt{fill:var(--algae2)}
+      .rock{fill:var(--sand)}
+      .bubble{fill:var(--bubble); stroke:var(--stroke); stroke-width:4}
+
+      /* Sway (mecer) */
+      .alga{
+        transform-box: fill-box;
+        transform-origin: bottom center;
+        animation: sway 5.6s ease-in-out infinite alternate;
+      }
+      .alga.d2{ animation-duration: 6.4s }
+      .alga.d3{ animation-duration: 7.3s }
+      .alga.d4{ animation-duration: 5.1s }
+
+      @keyframes sway{
+        0%   { transform: rotate(-5deg) }
+        100% { transform: rotate(6deg) }
+      }
+
+      /* Burbujas */
+      @keyframes bubbleUp{
+        0%   { transform: translateY(0) translateX(0); opacity: 0 }
+        10%  { opacity: 1 }
+        90%  { opacity: 1 }
+        100% { transform: translateY(-900px) translateX(-40px); opacity: 0 }
+      }
+      .b{ animation: bubbleUp 12s linear infinite }
+      .b.slow { animation-duration: 16s }
+      .b.fast { animation-duration: 9s }
+      .b.d1{ animation-delay: -2s }
+      .b.d2{ animation-delay: -5s }
+      .b.d3{ animation-delay: -8s }
+      .b.d4{ animation-delay: -11s }
+      .b.d5{ animation-delay: -14s }
+    </style>
+  </defs>
+
+  <!-- Fondo -->
+  <rect class="bg" x="0" y="0" width="1600" height="900"></rect>
+
+  <!-- Rocas/suelo -->
+  <path class="rock outline" d="M0,820 C250,770 340,860 520,840 690,822 770,870 950,850 1140,828 1260,890 1600,850 L1600,900 L0,900 Z"></path>
+
+  <!-- ALGAS -->
+<g class="alga d1" transform="translate(180 820)">
+  <path d="M0,0 C-10,-80 15,-180 6,-270 C20,-250 40,-205 52,-150 C60,-110 45,-70 32,-25 Z"
+        fill="#079e2dff" stroke="#0b3a11ff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M24,-6 C18,-60 40,-120 44,-200 C60,-170 78,-130 86,-78 C92,-40 78,-22 64,-4 Z"
+        fill="#2798B8" stroke="#0b2a3a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+
+
+  <g class="alga d2" transform="translate(380 825)">
+    <path class="outline" d="M0,0 C-6,-70 8,-150 0,-230 C18,-210 38,-170 50,-120 C58,-82 44,-48 28,-10 Z"></path>
+    <path class="outline alt" d="M22,-4 C18,-55 30,-110 36,-175 C50,-150 66,-120 74,-78 C80,-45 68,-22 54,-3 Z"></path>
+  </g>
+
+  <g class="alga d3" transform="translate(700 830)">
+    <path class="outline" d="M0,0 C-12,-90 18,-190 8,-285 C26,-255 50,-205 64,-148 C74,-102 54,-62 34,-16 Z"></path>
+    <path class="outline alt" d="M26,-6 C18,-70 44,-132 50,-210 C68,-180 84,-140 94,-92 C100,-55 86,-26 68,-5 Z"></path>
+  </g>
+
+  <g class="alga d4" transform="translate(980 828)">
+    <path class="outline" d="M0,0 C-8,-75 12,-160 6,-238 C20,-212 40,-172 52,-124 C60,-88 46,-52 30,-12 Z"></path>
+    <path class="outline alt" d="M22,-4 C16,-58 34,-118 40,-184 C54,-156 70,-124 78,-84 C84,-50 70,-24 54,-3 Z"></path>
+  </g>
+
+  <g class="alga d2" transform="translate(1250 832)">
+    <path class="outline" d="M0,0 C-10,-80 15,-180 6,-270 C20,-250 40,-205 52,-150 C60,-110 45,-70 32,-25 Z"></path>
+    <path class="outline alt" d="M24,-6 C18,-60 40,-120 44,-200 C60,-170 78,-130 86,-78 C92,-40 78,-22 64,-4 Z"></path>
+  </g>
+
+  <!-- BURBUJAS -->
+  <g transform="translate(260 830)">
+    <circle class="bubble outline b d1 slow" r="14" cx="0" cy="0"></circle>
+    <circle class="bubble outline b d3" r="8" cx="40" cy="0"></circle>
+    <circle class="bubble outline b d5 fast" r="11" cx="-30" cy="0"></circle>
+  </g>
+
+  <g transform="translate(520 835)">
+    <circle class="bubble outline b d2" r="10" cx="0" cy="0"></circle>
+    <circle class="bubble outline b d4 slow" r="7" cx="32" cy="0"></circle>
+  </g>
+
+  <g transform="translate(820 838)">
+    <circle class="bubble outline b d3 fast" r="9" cx="-10" cy="0"></circle>
+    <circle class="bubble outline b d1" r="13" cx="24" cy="0"></circle>
+    <circle class="bubble outline b d5" r="6" cx="48" cy="0"></circle>
+  </g>
+
+  <g transform="translate(1100 836)">
+    <circle class="bubble outline b d2" r="12" cx="0" cy="0"></circle>
+    <circle class="bubble outline b d4 fast" r="8" cx="-26" cy="0"></circle>
+  </g>
+
+  <g transform="translate(1390 834)">
+    <circle class="bubble outline b d1 slow" r="10" cx="0" cy="0"></circle>
+    <circle class="bubble outline b d3" r="7" cx="22" cy="0"></circle>
+  </g>
+</svg>

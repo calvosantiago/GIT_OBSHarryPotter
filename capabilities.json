@@ -1,0 +1,23 @@
+{
+  "dataRoles": [
+    { "name": "advisor",    "kind": "Grouping", "displayName": "Asesor" },
+    { "name": "matriculas", "kind": "Measure",  "displayName": "Matrículas" }
+  ],
+  "dataViewMappings": [
+    {
+      "conditions": [
+        { "advisor": { "min": 1, "max": 1 }, "matriculas": { "min": 0, "max": 1 } }
+      ],
+      "categorical": {
+        "categories": { "for": { "in": "advisor" } },
+        "values": {
+          "select": [
+            { "bind": { "to": "matriculas" } }
+          ]
+        }
+      }
+    }
+  ],
+  "objects": {},
+  "privileges": []
+}
