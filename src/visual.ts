@@ -8,95 +8,57 @@ import * as PIXI from "pixi.js";
 
 declare const require: any;
 
-// Imágenes (recomendado 1024–2048 px, con transparencia)
-const seahorseUrl: string = require("../assets/seahorse.png");   // 2
-const fishUrl:     string = require("../assets/fish.png");       // 3
-const doryUrl:     string = require("../assets/dory.png");       // no usado en UCMA
-const turtleUrl:   string = require("../assets/turtle.png");     // 4
-const rayUrl:      string = require("../assets/ray.png");        // 5
-const swordUrl:    string = require("../assets/sword.png");      // 6
-const dolphinUrl:  string = require("../assets/dolphin.png");    // 7
-const hammerUrl:   string = require("../assets/hammer.png");     // no usado en UCMA
-const sharkUrl:    string = require("../assets/shark.png");      // 8
-const jellyUrl:    string = require("../assets/jelly.png");      // 1
-
-// Poseidon (>=9): 1 centro; 2+ izquierda/derecha
-const poseidon1Url:  string = require("../assets/poseidon1.png");
-const poseidon2Url:  string = require("../assets/poseidon2.png");
-const poseidon3Url:  string = require("../assets/poseidon3.png");
-const poseidon4Url:  string = require("../assets/poseidon4.png");
-const unknownPoseidonUrl: string = require("../assets/advisors/unknown.png");
-
-// Sirenas (9 matrículas) por asesora y Atenea (>=10, clave "nombre|atenea").
-// Si falta la foto de una asesora se usa unknown.png.
-const ADVISOR_POSEIDON_URLS: Record<string, string> = {
-  "agustin oregioni": require("../assets/advisors/agustin-oregioni.png"),
-  "agustina lopez": require("../assets/advisors/agustina_lopez.png"),
-  "alejandra ferreiro": require("../assets/advisors/alejandra_ferreiro.png"),
-  "alexia verdaguer": require("../assets/advisors/alexia-verdaguer.png"),
-  "diana cubillo": require("../assets/advisors/diana_cubillo.png"),
-  "ivan canale": require("../assets/advisors/ivan-canale.png"),
-  "ivonne rose": require("../assets/advisors/ivonne-rose.png"),
-  "laura norte": require("../assets/advisors/laura_norte.png"),
-  "manuel martinez": require("../assets/advisors/manuel-martinez.png"),
-  "mar guerrero": require("../assets/advisors/mar_guerrero.png"),
-  "maribel weber": require("../assets/advisors/maribel_weber.png"),
-  "marien serrano": require("../assets/advisors/marien-serrano.png"),
-  "nicolas uriburu": require("../assets/advisors/nicolas-uriburu.png"),
-  "paola suarez": require("../assets/advisors/paola-suarez.png"),
-  "rocio jimenez": require("../assets/advisors/rocio-jimenez.png"),
-  "susana pon": require("../assets/advisors/susana_pon.png"),
-  "tatiana jimenez": require("../assets/advisors/tatiana-jimenez.png"),
-  "diana cubillo|atenea": require("../assets/advisors/diana_cubillo_atenea.png"),
-  "rocio jimenez|atenea": require("../assets/advisors/rocio_jimenez_atenea.png"),
-  "maribel weber|atenea": require("../assets/advisors/maribel_weber_atenea.png"),
-  "tatiana jimenez|atenea": require("../assets/advisors/tatiana_jimenez_atenea.png"),
-};
-const ATENEA_MIN_VALUE = 10;
-function advisorKey(id: string, value?: number): string {
-  const name = normalizeAdvisorName(id);
-  return (value !== undefined && value >= ATENEA_MIN_VALUE) ? name + "|atenea" : name;
+/** ====== Fotos de asesores ======
+ * Se cargan automáticamente todos los .png de assets/advisors/ y de sus
+ * subcarpetas (una por equipo: A1, A2, B1...); la carpeta solo organiza.
+ * El nombre del archivo identifica al asesor (se normaliza igual que el nombre
+ * que llega de Power BI: sin tildes, minúsculas, separadores -> espacio):
+ *   "Agustin Oregioni"  <->  agustin-oregioni.png / agustin_oregioni.png
+ * Las fotos van en la MISMA orientación: mirando hacia la DERECHA.
+ * Si un asesor no tiene foto se usa unknown.png.
+ */
+const advisorCtx = require.context("../assets/advisors", true, /\.png$/i);
+const UNKNOWN_KEY = "unknown";
+const ADVISOR_URLS: Record<string, string> = {};
+for (const k of advisorCtx.keys() as string[]) {
+  const mod = advisorCtx(k);
+  const url: string = typeof mod === "string" ? mod : mod?.default;
+  const base = k.replace(/^.*[\\/]/, "").replace(/\.png$/i, "");
+  ADVISOR_URLS[normalizeAdvisorName(base)] = url;
 }
 
 /** ====== Ajustes globales ====== **/
-const BODY_H = {
-  jelly:    0.90,
-  seahorse: 0.60,
-  fish:     0.60,
-  dory:     0.60,
-  turtle:   0.60,
-  ray:      0.55,
-  sword:    0.60,
-  dolphin:  0.60, // ← NUEVO
-  hammer:   0.60,
-  shark:    0.60,
-  poseidon: 0.70
-} as const;
+// Tamaño de cada asesor (igual para todos), como los peces: se escala por ANCHO.
+// 180 px equivale al tiburón (180–200); otras especies: tortuga 130, espada 130–140,
+// delfín 140–150. El alto máximo evita que una foto más
+// "vertical" se salga de su carril.
+const ADVISOR_WIDTH_PX  = 180;
+const ADVISOR_MAX_H_PX  = 180;
 
 // Bordes y física
-const BORDER_MARGIN    = 20;
-const OFF_PAD          = 60;
+const OFF_PAD          = 80;
 const FRICTION         = 0.995;
 const THRUST           = 3.0;
 const RETARGET_MIN     = 2.5;
 const RETARGET_MAX     = 6.5;
 
-// Headway por carril/dirección (evita pelotones/“choques”)
+// Velocidad (px/s): las matrículas aceleran un poco, sin cambiar el tamaño
+const SPEED_MIN        = 70;
+const SPEED_MAX        = 130;
+
+// Headway por carril/dirección (evita pelotones/"choques")
 const HEADWAY_BASE     = 40;
-const HEADWAY_K        = 0.6;
+const HEADWAY_K        = 1.0;    // × (ancho prev + ancho cur) / 2
 const HEADWAY_FORCE    = 4.0;
 
-// Concurrencia objetivo
-const ACTIVE_TARGET_H  = 20; // horizontales
-const ACTIVE_TARGET_J  = 15; // medusas
+// Concurrencia objetivo (asesores volando a la vez)
+const ACTIVE_TARGET    = 10;
 
 // Respawn
-const RESPAWN_H_MIN    = 5;
-const RESPAWN_H_MAX    = 12;
-const RESPAWN_J_MIN    = 5;
-const RESPAWN_J_MAX    = 10;
+const RESPAWN_MIN      = 5;
+const RESPAWN_MAX      = 12;
 
-// Escalonado incial
+// Escalonado inicial
 const SPAWN_STAGGER_S  = 12;
 
 // Etiquetas
@@ -106,73 +68,9 @@ const LABEL_LINE_GAP   = 2;
 const LABEL_GAP        = 3;
 const LABEL_SAFE_K     = 1.3;
 
-/** ====== Tamaño/Velocidad por especie (rango) ====== **/
-const SIZE_RANGE = {
-  jelly:    [30, 35],
-  seahorse: [70, 80],     // 2
-  fish:     [50, 60],     // 3
-  dory:     [70, 80],     // no usado en UCMA
-  turtle:   [130, 130],   // 4
-  ray:      [242, 242],   // 5
-  sword:    [130, 140],   // 6
-  dolphin:  [140, 150],   // 7
-  hammer:   [170, 170],   // no usado en UCMA
-  shark:    [180, 200],   // 8
-  poseidon: [180, 180]    // flotante
-} as const;
-
-const SPEED_RANGE = {
-  jelly:    [20,  60],   // vertical
-  seahorse: [50,  140],
-  fish:     [50,  140],
-  dory:     [70,  150],
-  turtle:   [60,  120],
-  ray:      [60,  140],
-  sword:    [90,  180],
-  dolphin:  [90,  180],  // ← NUEVO (ágil, como sword)
-  hammer:   [70,  140],
-  shark:    [60,  120],
-  poseidon: [0,    0]    // no se usa; flotación central
-} as const;
-
-/** ====== Buckets por matriculas UCMA ====== **/
-const BUCKETS = {
-  jelly:    [1, 1] as const,           // 1
-  seahorse: [2, 2] as const,           // 2
-  fish:     [3, 3] as const,           // 3
-  dory:     [4, 4] as const,           // no usado en UCMA
-  turtle:   [4, 4] as const,           // 4
-  ray:      [5, 5] as const,           // 5
-  sword:    [6, 6] as const,           // 6
-  dolphin:  [7, 7] as const,           // 7
-  hammer:   [9, 9] as const,           // no usado en UCMA
-  shark:    [8, 8] as const,           // 8
-  poseidon: [9, Infinity] as const     // >=9 centro con Poseidon1
-};
-
-type Kind =
-  | "jelly" | "seahorse" | "fish" | "dory" | "turtle" | "ray"
-  | "sword" | "dolphin" | "hammer" | "shark" | "poseidon";
-
-/** ====== Poseidon: flotación y posiciones ====== **/
-const POSEIDON_HEIGHT_K      = 1.25; // alto final = sizePx * K (igual para todas las sirenas)
-const POSEIDON_FLOAT_AMP_PX  = 12;  // amplitud (px)
-const POSEIDON_FLOAT_FREQ_HZ = 0.55; // Hz
-const POSEIDON_Y_OFFSET      = 10;   // offset base (px)
-const POSEIDON_X_LEFT_K      = 0.20; // izquierda (0..1 del ancho)
-const POSEIDON_X_RIGHT_K     = 0.80; // derecha   (0..1 del ancho)
-const POSEIDON_Y_TOP_OFFSET  = -180; // esquinas superiores
-const POSEIDON_Y_BOT_OFFSET  = 150;  // esquinas inferiores
-
-/** ====== Z-ORDER ======
- * Poseidon (sprite+label) por delante de todo,
- * las etiquetas de otros quedan detrás de Poseidon.
- */
-const Z_SPRITE_BG        = 100;  // medusas
-const Z_SPRITE_FG        = 300;  // peces estándar
-const Z_LABEL_OTHERS     = 350;  // etiquetas peces/otros (por detrás de Poseidon)
-const Z_SPRITE_POSEIDON  = 800;  // figura Poseidon
-const Z_LABEL_POSEIDON   = 900;  // etiqueta Poseidon
+// Z-order
+const Z_SPRITE         = 300;
+const Z_LABEL          = 350;
 
 /** Utilidades **/
 let fallbackRandSeed = 0x9e3779b9;
@@ -197,52 +95,16 @@ function hash32(str: string): number {
 function normalizeAdvisorName(str: string): string {
   return str
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .replace(/\s+/g, " ");
 }
 
-/** Clasificación por matrículas exacta según requisitos */
-function classifyKind(v?: number): Kind {
-  if (v === 1) return "jelly";
-  if (v === 2) return "seahorse";
-  if (v === 3) return "fish";
-  if (v === 4) return "turtle";
-  if (v === 5) return "ray";
-  if (v === 6) return "sword";
-  if (v === 7) return "dolphin";
-  if (v !== undefined && v >= 9) return "poseidon";
-  if (v === 8) return "shark";
-  return "fish";
-}
-function bucketT(kind: Kind, v?: number): number {
-  if (v === undefined) return 0.5;
-  const [a, b] = BUCKETS[kind];
-  if (!isFinite(b)) {
-    const t = (v - a) / Math.max(1, 20 - a);
-    return clamp(t, 0, 1);
-  }
-  return a === b ? 0 : clamp((v - a) / Math.max(1, b - a), 0, 1);
-}
-function sizeFor(kind: Kind, v?: number): number {
-  const [sMin, sMax] = SIZE_RANGE[kind];
-  const t = bucketT(kind, v);
-  return lerp(sMin, sMax, t);
-}
-function speedRange(kind: Kind): [number, number] {
-  const r = SPEED_RANGE[kind];
-  return [r[0], r[1]];
-}
-
-type PoseidonSide = "left" | "right" | "center";
-type PoseidonSlot = 1 | 2 | 3 | 4 | 5;
-
 interface NodeDatum {
   id: string;
   value?: number;
-  kind: Kind;
 
   sprite?: PIXI.Sprite;
 
@@ -255,9 +117,11 @@ interface NodeDatum {
 
   laneIdx: number;
   laneOffset?: number;
-  sizePx: number;
+  sizePx: number;      // alto real del asesor en pantalla
+  widthPx: number;     // ancho real del asesor en pantalla
   baseScale: number;
 
+  speedT: number;      // 0..1 según matrículas relativas
   speedMag: number;
   speedMul: number;
   tNext: number;
@@ -265,18 +129,6 @@ interface NodeDatum {
   isActive: boolean;
   nextSpawn: number;
   dir: 1 | -1;
-
-  // Medusas / Poseidon flotación
-  x0?: number;
-  phase?: number;
-  wAmp?: number;
-  wFreq?: number;
-  pPhase?: number;
-
-  // Poseidon: lado/imagen
-  pSide?: PoseidonSide;
-  pSlot?: PoseidonSlot;
-  pYOffset?: number;
 }
 
 export class Visual implements IVisual {
@@ -289,40 +141,8 @@ export class Visual implements IVisual {
   private pixiReady = false;
   private lastPixiError = "";
 
-  private seahorseTex?: PIXI.Texture;
-  private fishTex?: PIXI.Texture;
-  private doryTex?: PIXI.Texture;
-  private turtleTex?: PIXI.Texture;
-  private rayTex?: PIXI.Texture;
-  private swordTex?: PIXI.Texture;
-  private dolphinTex?: PIXI.Texture;   // ← NUEVO
-  private hammerTex?: PIXI.Texture;
-  private sharkTex?: PIXI.Texture;
-  private poseidon1Tex?: PIXI.Texture;
-  private poseidon2Tex?: PIXI.Texture;
-  private poseidon3Tex?: PIXI.Texture;
-  private poseidon4Tex?: PIXI.Texture;
-  private unknownPoseidonTex?: PIXI.Texture;
-  private advisorPoseidonTex = new Map<string, PIXI.Texture>();
-  private jellyTex?: PIXI.Texture;
+  private advisorTex = new Map<string, PIXI.Texture>();
   private texReady = false;
-
-  private seahorseBaseW = 512;
-  private fishBaseW = 512;
-  private doryBaseW = 512;
-  private turtleBaseW = 512;
-  private rayBaseW = 512;
-  private swordBaseW = 512;
-  private dolphinBaseW = 512; // ← NUEVO
-  private hammerBaseW = 512;
-  private sharkBaseW = 512;
-  private poseidon1BaseW = 768;
-  private poseidon2BaseW = 768;
-  private poseidon3BaseW = 768;
-  private poseidon4BaseW = 768;
-  private unknownPoseidonBaseW = 768;
-  private advisorPoseidonBaseW = new Map<string, number>();
-  private jellyBaseW = 512;
 
   private nodes: NodeDatum[] = [];
   private tickBound?: (delta: number) => void;
@@ -330,6 +150,7 @@ export class Visual implements IVisual {
   // Layout vertical
   private laneCenters: number[] = [];
   private laneCount = 1;
+  private spriteH = ADVISOR_MAX_H_PX;
   private topMargin = 24;
   private bottomMargin = 24;
 
@@ -431,7 +252,7 @@ export class Visual implements IVisual {
   }
 
   // Carga de una textura
-  private async loadOne(url: string): Promise<{ tex?: PIXI.Texture; baseW?: number }> {
+  private async loadOne(url: string): Promise<PIXI.Texture | undefined> {
     try {
       const tex = PIXI.Texture.from(url);
       if (!tex.baseTexture.valid) {
@@ -445,124 +266,32 @@ export class Visual implements IVisual {
       }
       tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON;
       tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
-      const baseW = (tex.baseTexture as any).realWidth ?? tex.width ?? 512;
-      return { tex, baseW };
+      return tex;
     } catch {
-      return {};
+      return undefined;
     }
   }
 
-  // Carga en PARALELO
+  // Carga en PARALELO de todas las fotos de assets/advisors
   private async loadTextures() {
-    const advisorPoseidonEntries = Object.entries(ADVISOR_POSEIDON_URLS);
-    const [
-      seahorse, fish, dory, turtle, ray, sword, dolphin, hammer, shark,
-      poseidon1, poseidon2, poseidon3, poseidon4, unknownPoseidon, jelly
-    ] = await Promise.all([
-      this.loadOne(seahorseUrl),
-      this.loadOne(fishUrl),
-      this.loadOne(doryUrl),
-      this.loadOne(turtleUrl),
-      this.loadOne(rayUrl),
-      this.loadOne(swordUrl),
-      this.loadOne(dolphinUrl), // ← NUEVO
-      this.loadOne(hammerUrl),
-      this.loadOne(sharkUrl),
-      this.loadOne(poseidon1Url),
-      this.loadOne(poseidon2Url),
-      this.loadOne(poseidon3Url),
-      this.loadOne(poseidon4Url),
-      this.loadOne(unknownPoseidonUrl),
-      this.loadOne(jellyUrl),
-    ]);
-    const advisorPoseidons = await Promise.all(
-      advisorPoseidonEntries.map(async ([name, url]) => ({ name, loaded: await this.loadOne(url) }))
+    const entries = Object.entries(ADVISOR_URLS);
+    const loaded = await Promise.all(
+      entries.map(async ([name, url]) => ({ name, tex: await this.loadOne(url) }))
     );
-
-    if (seahorse.tex)  { this.seahorseTex = seahorse.tex;   this.seahorseBaseW = seahorse.baseW ?? this.seahorseBaseW; }
-    if (fish.tex)      { this.fishTex = fish.tex;           this.fishBaseW = fish.baseW ?? this.fishBaseW; }
-    if (dory.tex)      { this.doryTex = dory.tex;           this.doryBaseW = dory.baseW ?? this.doryBaseW; }
-    if (turtle.tex)    { this.turtleTex = turtle.tex;       this.turtleBaseW = turtle.baseW ?? this.turtleBaseW; }
-    if (ray.tex)       { this.rayTex = ray.tex;             this.rayBaseW = ray.baseW ?? this.rayBaseW; }
-    if (sword.tex)     { this.swordTex = sword.tex;         this.swordBaseW = sword.baseW ?? this.swordBaseW; }
-    if (dolphin.tex)   { this.dolphinTex = dolphin.tex;     this.dolphinBaseW = dolphin.baseW ?? this.dolphinBaseW; } // ← NUEVO
-    if (hammer.tex)    { this.hammerTex = hammer.tex;       this.hammerBaseW = hammer.baseW ?? this.hammerBaseW; }
-    if (shark.tex)     { this.sharkTex = shark.tex;         this.sharkBaseW = shark.baseW ?? this.sharkBaseW; }
-    if (poseidon1.tex) { this.poseidon1Tex = poseidon1.tex; this.poseidon1BaseW = poseidon1.baseW ?? this.poseidon1BaseW; }
-    if (poseidon2.tex) { this.poseidon2Tex = poseidon2.tex; this.poseidon2BaseW = poseidon2.baseW ?? this.poseidon2BaseW; }
-    if (poseidon3.tex) { this.poseidon3Tex = poseidon3.tex; this.poseidon3BaseW = poseidon3.baseW ?? this.poseidon3BaseW; }
-    if (poseidon4.tex) { this.poseidon4Tex = poseidon4.tex; this.poseidon4BaseW = poseidon4.baseW ?? this.poseidon4BaseW; }
-    if (unknownPoseidon.tex) { this.unknownPoseidonTex = unknownPoseidon.tex; this.unknownPoseidonBaseW = unknownPoseidon.baseW ?? this.unknownPoseidonBaseW; }
-    if (jelly.tex)     { this.jellyTex = jelly.tex;         this.jellyBaseW = jelly.baseW ?? this.jellyBaseW; }
-    for (const { name, loaded } of advisorPoseidons) {
-      if (loaded.tex) {
-        this.advisorPoseidonTex.set(name, loaded.tex);
-        this.advisorPoseidonBaseW.set(name, loaded.baseW ?? 768);
-      }
+    for (const { name, tex } of loaded) {
+      if (tex) this.advisorTex.set(name, tex);
     }
-
-    this.texReady = !!(
-      this.seahorseTex || this.fishTex || this.doryTex || this.turtleTex || this.rayTex || this.swordTex ||
-      this.dolphinTex || this.hammerTex || this.sharkTex ||
-      this.poseidon1Tex || this.poseidon2Tex || this.poseidon3Tex || this.poseidon4Tex ||
-      this.unknownPoseidonTex || this.advisorPoseidonTex.size > 0 || this.jellyTex
-    );
+    this.texReady = this.advisorTex.size > 0;
 
     if (this.stage && this.nodes?.length) {
       this.ensureSpritesAndLabels();
-      // Activación inmediata de poseidon tras tener sprite/label
-      const w = this.root.clientWidth || 1;
-      const h = this.root.clientHeight || 1;
-      for (const n of this.nodes) {
-        if (n.kind === "poseidon" && !n.isActive && n.sprite) {
-          this.activateNode(n, w, h);
-        }
-      }
       this.needsRebuild = true;
     }
   }
 
-  // helpers de texturas/baseW (sin fallback a fish)
-  private texFor(kind: Kind, n?: NodeDatum): PIXI.Texture | undefined {
-    switch (kind) {
-      case "jelly":    return this.jellyTex;
-      case "seahorse": return this.seahorseTex;
-      case "fish":     return this.fishTex;
-      case "dory":     return this.doryTex;
-      case "turtle":   return this.turtleTex;
-      case "ray":      return this.rayTex;
-      case "sword":    return this.swordTex;
-      case "dolphin":  return this.dolphinTex; // ← NUEVO
-      case "hammer":   return this.hammerTex;
-      case "shark":    return this.sharkTex;
-      case "poseidon":
-        if (n?.id) {
-          const advisorTex = this.advisorPoseidonTex.get(advisorKey(n.id, n.value));
-          if (advisorTex) return advisorTex;
-        }
-        return this.unknownPoseidonTex || this.poseidon1Tex;
-    }
-  }
-  private baseWFor(kind: Kind, n?: NodeDatum): number {
-    switch (kind) {
-      case "jelly":    return this.jellyBaseW;
-      case "seahorse": return this.seahorseBaseW;
-      case "fish":     return this.fishBaseW;
-      case "dory":     return this.doryBaseW;
-      case "turtle":   return this.turtleBaseW;
-      case "ray":      return this.rayBaseW;
-      case "sword":    return this.swordBaseW;
-      case "dolphin":  return this.dolphinBaseW; // ← NUEVO
-      case "hammer":   return this.hammerBaseW;
-      case "shark":    return this.sharkBaseW;
-      case "poseidon":
-        if (n?.id) {
-          const advisorBaseW = this.advisorPoseidonBaseW.get(advisorKey(n.id, n.value));
-          if (advisorBaseW) return advisorBaseW;
-        }
-        return this.unknownPoseidonTex ? this.unknownPoseidonBaseW : this.poseidon1BaseW;
-      default:         return 512;
-    }
+  // foto del asesor, o unknown.png si todavía no existe
+  private texFor(n: NodeDatum): PIXI.Texture | undefined {
+    return this.advisorTex.get(normalizeAdvisorName(n.id)) || this.advisorTex.get(UNKNOWN_KEY);
   }
 
   private updateDebug(w: number, h: number, count: number, hasCat = false, hasVals = false) {
@@ -596,15 +325,8 @@ export class Visual implements IVisual {
       return;
     }
 
-    this.upsertNodes(items, w, h);        // crea/actualiza nodos + layout
-    this.ensureSpritesAndLabels();         // prepara sprites/labels
-
-    // ACTIVACIÓN INMEDIATA de poseidon
-    for (const n of this.nodes) {
-      if (n.kind === "poseidon" && !n.isActive && n.sprite) {
-        this.activateNode(n, w, h);
-      }
-    }
+    this.upsertNodes(items, h);          // crea/actualiza nodos + layout
+    this.ensureSpritesAndLabels();       // prepara sprites/labels
   }
 
   /** Lectura de datos */
@@ -630,137 +352,87 @@ export class Visual implements IVisual {
     return items;
   }
 
-  /** Layout vertical seguro */
-  private computeLayout(h: number, sizes: number[], kinds: Kind[]) {
-    const wantedLanes = Math.max(1, Math.ceil(sizes.length / 2));
+  /** Layout vertical seguro: tantos carriles como quepan (máx. count/2) */
+  private computeLayout(h: number, count: number) {
+    this.spriteH = ADVISOR_MAX_H_PX;
 
-    let maxHalf = 24;
     const labelH = (NAME_FONT_SIZE + LABEL_LINE_GAP + VALUE_FONT_SIZE) * LABEL_SAFE_K;
-    for (let i = 0; i < sizes.length; i++) {
-      const k = kinds[i] ?? "fish";
-      const half = sizes[i] * (BODY_H[k] ?? 0.6) * 0.5;
-      if (half > maxHalf) maxHalf = half;
-    }
+    const half = this.spriteH * 0.5;
 
-    this.topMargin = Math.ceil(maxHalf + 6);
-    this.bottomMargin = Math.ceil(maxHalf + LABEL_GAP + labelH + 6);
+    this.topMargin = Math.ceil(half + 6);
+    this.bottomMargin = Math.ceil(half + LABEL_GAP + labelH + 6);
 
     const avail = Math.max(1, h - this.topMargin - this.bottomMargin);
-    this.laneCount = wantedLanes;
-    if (!isFinite(this.laneCount) || this.laneCount < 1 || avail < 1) this.laneCount = 1;
+    const laneH = this.spriteH + LABEL_GAP + labelH;
+    const fit = Math.max(1, Math.floor(avail / laneH) + 1);
+    const wanted = Math.max(1, Math.ceil(count / 2));
+    this.laneCount = Math.min(wanted, fit);
 
     const step = avail / this.laneCount;
     this.laneCenters = Array.from({ length: this.laneCount }, (_, i) => this.topMargin + step * (i + 0.5));
   }
 
-  /** Alta/actualización + asignación lado poseidon */
-  private upsertNodes(items: Array<{ id: string; value?: number }>, w: number, h: number) {
+  /** Alta/actualización de nodos */
+  private upsertNodes(items: Array<{ id: string; value?: number }>, h: number) {
     const byId = new Map(this.nodes.map(n => [n.id, n] as const));
 
-    const sizes: number[] = [];
-    const kinds: Kind[] = [];
-    const precomputed: Array<{ id: string; effValue?: number; effKind: Kind; laneIdx: number; }> = [];
+    this.computeLayout(h, items.length);
+
+    // Matrículas relativas -> velocidad
+    const defined = items.map(i => i.value).filter((v): v is number => v !== undefined);
+    const vMin = defined.length ? Math.min(...defined) : 0;
+    const vMax = defined.length ? Math.max(...defined) : 0;
 
     // Orden estable para carriles
     const shuffled = items.map(it => ({ it, h: hash32(it.id) })).sort((a, b) => (a.h - b.h));
     const laneById = new Map<string, number>();
-    shuffled.forEach((row, pos) => laneById.set(row.it.id, Math.floor(pos / 2)));
-
-    for (const it of items) {
-      const prev = byId.get(it.id);
-      const desiredKind = classifyKind(it.value);
-      const effValue = (it.value === undefined && prev) ? prev.value : it.value;
-      const effKind  = (it.value === undefined && prev) ? prev.kind  : desiredKind;
-      const sizePx   = sizeFor(effKind, effValue);
-      sizes.push(sizePx);
-      kinds.push(effKind);
-      precomputed.push({ id: it.id, effValue, effKind, laneIdx: laneById.get(it.id) ?? 0 });
-    }
-
-    this.computeLayout(h, sizes, kinds);
-
-    // Hasta 5 Poseidones: 4 esquinas + 1 centro.
-    const poseidonIds = precomputed
-      .filter(p => p.effKind === "poseidon")
-      .map(p => p.id)
-      .sort((a, b) => hash32(a) - hash32(b));
-
-    const poseidonSideMap = new Map<string, PoseidonSide>();
-    const poseidonSlotMap = new Map<string, PoseidonSlot>();
-    const poseidonYOffsetMap = new Map<string, number>();
-    if (poseidonIds.length === 1) {
-      poseidonSideMap.set(poseidonIds[0], "center");
-      poseidonSlotMap.set(poseidonIds[0], 5);
-      poseidonYOffsetMap.set(poseidonIds[0], 0);
-    } else if (poseidonIds.length >= 2) {
-      for (let i = 0; i < poseidonIds.length; i++) {
-        const id = poseidonIds[i];
-        const slot = Math.min(i + 1, 5) as PoseidonSlot;
-        poseidonSlotMap.set(id, slot);
-        if (slot === 5) {
-          poseidonSideMap.set(id, "center");
-          poseidonYOffsetMap.set(id, 0);
-        } else {
-          poseidonSideMap.set(id, (slot % 2 === 1) ? "left" : "right");
-          poseidonYOffsetMap.set(id, poseidonIds.length === 2
-            ? 0
-            : (slot <= 2 ? POSEIDON_Y_TOP_OFFSET : POSEIDON_Y_BOT_OFFSET));
-        }
-      }
-    }
+    shuffled.forEach((row, pos) => laneById.set(row.it.id, pos % this.laneCount));
 
     const now = this.timeSec || 0;
     const next: NodeDatum[] = [];
     const seen = new Set<string>();
 
-    precomputed.forEach((row, idx) => {
-      const it = items[idx];
-      seen.add(row.id);
+    for (const it of items) {
+      seen.add(it.id);
 
-      const prev = byId.get(row.id);
-      const laneIdx = clamp(row.laneIdx, 0, Math.max(0, this.laneCount - 1));
-      const sizePx = sizes[idx];
+      const prev = byId.get(it.id);
+      const effValue = (it.value === undefined && prev) ? prev.value : it.value;
+      const laneIdx = clamp(laneById.get(it.id) ?? 0, 0, Math.max(0, this.laneCount - 1));
 
-      const speedMul = prev?.speedMul ?? randRange(0.7, 1.3);
-      const [sMin, sMax] = speedRange(row.effKind);
-      const t = bucketT(row.effKind, row.effValue);
-      const baseSpeed = lerp(sMin, sMax, t) * speedMul;
+      const speedT = (effValue === undefined || vMax === vMin) ? 0.5 : clamp((effValue - vMin) / (vMax - vMin), 0, 1);
+      const speedMul = prev?.speedMul ?? randRange(0.9, 1.1);
+      const baseSpeed = lerp(SPEED_MIN, SPEED_MAX, speedT) * speedMul;
 
       let n = prev;
       if (!n) {
         n = {
-          id: row.id,
-          value: row.effValue,
-          kind: row.effKind,
+          id: it.id,
+          value: effValue,
           x: 0, y: 0,
           vx: 0, vy: 0,
           laneIdx,
           laneOffset: 0,
-          sizePx,
+          sizePx: this.spriteH,
+          widthPx: ADVISOR_WIDTH_PX,
           baseScale: 1,
+          speedT,
           speedMag: baseSpeed,
           speedMul,
           tNext: randRange(RETARGET_MIN, RETARGET_MAX),
           isActive: false,
-          nextSpawn: now + ((hash32(row.id) % 1000) / 1000) * SPAWN_STAGGER_S,
+          nextSpawn: now + ((hash32(it.id) % 1000) / 1000) * SPAWN_STAGGER_S,
           dir: rand01() > 0.5 ? 1 : -1
         };
       } else {
-        n.value = row.effValue;
-        n.kind  = row.effKind;
-        n.sizePx = sizePx;
+        n.value = effValue;
+        n.sizePx = this.spriteH;
         n.laneIdx = laneIdx;
+        n.speedT = speedT;
         n.speedMag = baseSpeed;
       }
 
-      if (n.kind === "poseidon") {
-        n.pSide = poseidonSideMap.get(n.id) || "center";
-        n.pSlot = poseidonSlotMap.get(n.id) || 1;
-        n.pYOffset = poseidonYOffsetMap.get(n.id) || 0;
-      }
-
       next.push(n);
-    });
+    }
 
     // elimina los que faltan
     for (const [id, n] of byId) {
@@ -779,27 +451,26 @@ export class Visual implements IVisual {
     if (!this.stage) return;
 
     const nameStyle = new PIXI.TextStyle({
-      fill: "#eaf6ff", fontFamily: "Segoe UI, Arial, sans-serif",
+      fill: "#f6e7b4", fontFamily: "Segoe UI, Arial, sans-serif",
       fontSize: NAME_FONT_SIZE, fontWeight: "600",
-      stroke: "#00131f", strokeThickness: 3, align: "center"
+      stroke: "#1a0f05", strokeThickness: 3, align: "center"
     });
     const valueStyle = new PIXI.TextStyle({
-      fill: "#bfe7ff", fontFamily: "Segoe UI, Arial, sans-serif",
+      fill: "#e2c46a", fontFamily: "Segoe UI, Arial, sans-serif",
       fontSize: VALUE_FONT_SIZE, fontWeight: "500",
-      stroke: "#00131f", strokeThickness: 3, align: "center"
+      stroke: "#1a0f05", strokeThickness: 3, align: "center"
     });
 
     this.nodes.forEach(n => {
-      const desiredTex = this.texFor(n.kind, n);
-      const baseW = this.baseWFor(n.kind, n);
+      const desiredTex = this.texFor(n);
 
-      // Poseidon/sirenas: las imágenes tienen distinto aspect ratio, así que se
-      // normaliza por ALTO (no por ancho) para que todas midan lo mismo.
-      const texH = (desiredTex as any)?.height as number | undefined;
-      const s = (n.kind === "poseidon" && texH)
-        ? Math.min(1, (n.sizePx * POSEIDON_HEIGHT_K) / texH)
-        : Math.min(1, n.sizePx / Math.max(1, baseW));
+      // Se escala por ANCHO (como los peces), sin pasar del alto máximo.
+      const texH = desiredTex?.height;
+      const texW = desiredTex?.width;
+      const s = (texH && texW) ? Math.min(ADVISOR_WIDTH_PX / texW, ADVISOR_MAX_H_PX / texH) : 0.001;
       n.baseScale = s > 0 ? s : 0.001;
+      n.widthPx = (texW ? texW * n.baseScale : ADVISOR_WIDTH_PX);
+      n.sizePx  = (texH ? texH * n.baseScale : this.spriteH);
 
       // SPRITE
       if (!n.sprite) {
@@ -807,9 +478,9 @@ export class Visual implements IVisual {
           const sp = new PIXI.Sprite(desiredTex);
           sp.anchor.set(0.5);
           sp.x = n.x; sp.y = n.y;
-          sp.scale.set(n.baseScale, n.baseScale);
+          sp.scale.set(n.baseScale * n.dir, n.baseScale);
           sp.visible = false;
-          sp.zIndex = (n.kind === "poseidon") ? Z_SPRITE_POSEIDON : (n.kind === "jelly" ? Z_SPRITE_BG : Z_SPRITE_FG);
+          sp.zIndex = Z_SPRITE;
           this.stage!.addChild(sp);
           n.sprite = sp;
         }
@@ -817,15 +488,13 @@ export class Visual implements IVisual {
         if (desiredTex && n.sprite.texture !== desiredTex) n.sprite.texture = desiredTex;
         const sign = Math.sign(n.sprite.scale.x) || 1;
         n.sprite.scale.set(Math.abs(n.baseScale) * sign, n.baseScale);
-        n.sprite.zIndex = (n.kind === "poseidon") ? Z_SPRITE_POSEIDON : (n.kind === "jelly" ? Z_SPRITE_BG : Z_SPRITE_FG);
+        n.sprite.zIndex = Z_SPRITE;
       }
 
-      // LABEL (zIndex depende de especie)
-      const wantLabelZ = (n.kind === "poseidon") ? Z_LABEL_POSEIDON : Z_LABEL_OTHERS;
-
+      // LABEL
       if (!n.label) {
         const container = new PIXI.Container();
-        container.zIndex = wantLabelZ;
+        container.zIndex = Z_LABEL;
         const tName = new PIXI.Text(n.id, nameStyle);
         tName.anchor.set(0.5, 0);
         const tVal = new PIXI.Text((n.value ?? 0).toLocaleString?.("es-ES") ?? String(n.value ?? 0), valueStyle);
@@ -836,7 +505,7 @@ export class Visual implements IVisual {
         this.stage!.addChild(container);
         n.label = container; n.nameText = tName; n.valText = tVal;
       } else {
-        n.label.zIndex = wantLabelZ;
+        n.label.zIndex = Z_LABEL;
         if (n.nameText && n.nameText.text !== n.id) n.nameText.text = n.id;
         const newVal = (n.value ?? 0).toLocaleString?.("es-ES") ?? String(n.value ?? 0);
         if (n.valText && n.valText.text !== newVal) {
@@ -875,79 +544,48 @@ export class Visual implements IVisual {
     this.app?.renderer.resize(w, h);
   }
 
-  /** Activar/desactivar */
+  /** Activar: el asesor entra volando por un borde (las fotos miran a la derecha) */
   private activateNode(n: NodeDatum, w: number, h: number) {
     n.isActive = true;
+    n.dir = rand01() > 0.5 ? 1 : -1;
 
-    if (n.kind === "jelly") {
-      n.y = -this.topMargin - randRange(0, h * 0.5);
-      n.x0 = randRange(BORDER_MARGIN, w - BORDER_MARGIN);
-      n.phase = randRange(0, Math.PI * 2);
-      n.wAmp = randRange(18, 60);
-      n.wFreq = randRange(0.6, 1.4);
-      n.vy = n.speedMag;
-      n.x = n.x0 + Math.sin(n.phase) * (n.wAmp ?? 30);
-    } else if (n.kind === "poseidon") {
-      n.dir = 1;
-      n.vx = 0; n.vy = 0;
-      n.pPhase = randRange(0, Math.PI * 2);
-      if (n.pSide === "left") n.x = w * POSEIDON_X_LEFT_K;
-      else if (n.pSide === "right") n.x = w * POSEIDON_X_RIGHT_K;
-      else n.x = w * 0.5;
-      n.y = h * 0.5 + POSEIDON_Y_OFFSET + (n.pYOffset || 0);
-    } else {
-      n.dir = rand01() > 0.5 ? 1 : -1;
-      const avail = Math.max(1, h - this.topMargin - this.bottomMargin);
-      const step = avail / Math.max(1, this.laneCount);
-      const yCenter = this.laneCenters[n.laneIdx] ?? (h / 2);
-      const jitter = clamp(randRange(-step * 0.25, step * 0.25), -step * 0.3, step * 0.3);
-      n.laneOffset = jitter;
+    const avail = Math.max(1, h - this.topMargin - this.bottomMargin);
+    const step = avail / Math.max(1, this.laneCount);
+    const yCenter = this.laneCenters[n.laneIdx] ?? (h / 2);
+    const jitter = clamp(randRange(-step * 0.25, step * 0.25), -step * 0.3, step * 0.3);
+    n.laneOffset = jitter;
 
-      n.y = yCenter + (n.laneOffset || 0);
-      if (n.dir === 1) { n.x = -OFF_PAD;      n.vx =  Math.abs(n.speedMag); }
-      else             { n.x =  w + OFF_PAD;  n.vx = -Math.abs(n.speedMag); }
-      n.vy = 0;
-    }
+    const pad = OFF_PAD + n.widthPx * 0.5;
+    n.y = yCenter + (n.laneOffset || 0);
+    if (n.dir === 1) { n.x = -pad;      n.vx =  Math.abs(n.speedMag); }
+    else             { n.x =  w + pad;  n.vx = -Math.abs(n.speedMag); }
+    n.vy = 0;
 
     if (n.sprite) {
       n.sprite.visible = true;
       n.sprite.x = n.x; n.sprite.y = n.y;
-      if (n.kind === "jelly" || n.kind === "poseidon") {
-        n.sprite.scale.x = Math.abs(n.baseScale);
-        n.sprite.scale.y = n.baseScale;
-      } else {
-        const sgn = (n.dir === 1 ? 1 : -1);
-        n.sprite.scale.x = Math.abs(n.baseScale) * sgn;
-        n.sprite.scale.y = n.baseScale;
-      }
+      n.sprite.scale.x = Math.abs(n.baseScale) * n.dir;
+      n.sprite.scale.y = n.baseScale;
     }
     if (n.label) {
       n.label.visible = !!n.sprite;
-      const halfH = n.sizePx * (BODY_H[n.kind] ?? 0.6) * 0.5;
-      n.label.x = n.x; n.label.y = n.y + halfH + LABEL_GAP;
-      n.label.zIndex = (n.kind === "poseidon") ? Z_LABEL_POSEIDON : Z_LABEL_OTHERS;
+      n.label.x = n.x; n.label.y = n.y + n.sizePx * 0.5 + LABEL_GAP;
+      n.label.zIndex = Z_LABEL;
     }
   }
 
-  private deactivateNode(n: NodeDatum, delayMin: number, delayMax: number) {
+  private deactivateNode(n: NodeDatum) {
     n.isActive = false;
 
     // Respawn proporcional al tiempo de cruce
     const w = this.root.clientWidth || 1;
     const travelT = (w + 2 * OFF_PAD) / Math.max(1, n.speedMag);
     const base = randRange(0.35, 0.65);
-    const jittered = base * travelT;
+    n.nextSpawn = this.timeSec + clamp(base * travelT, RESPAWN_MIN, RESPAWN_MAX);
 
-    if (n.kind === "poseidon") {
-      n.nextSpawn = this.timeSec + clamp(jittered * 0.3, 1, 4);
-    } else if (n.kind === "jelly") {
-      n.nextSpawn = this.timeSec + clamp(jittered, RESPAWN_J_MIN, RESPAWN_J_MAX);
-    } else {
-      n.nextSpawn = this.timeSec + clamp(jittered, RESPAWN_H_MIN, RESPAWN_H_MAX);
-      if (this.laneCount > 1) {
-        const delta = 1 + Math.floor(rand01() * (this.laneCount - 1));
-        n.laneIdx = (n.laneIdx + delta) % this.laneCount;
-      }
+    if (this.laneCount > 1) {
+      const delta = 1 + Math.floor(rand01() * (this.laneCount - 1));
+      n.laneIdx = (n.laneIdx + delta) % this.laneCount;
     }
 
     if (n.sprite) n.sprite.visible = false;
@@ -974,86 +612,53 @@ export class Visual implements IVisual {
     for (const n of this.nodes) {
       n.tNext -= dt;
       if (n.tNext <= 0) {
-        const [sMin, sMax] = speedRange(n.kind);
-        const t = bucketT(n.kind, n.value);
-        n.speedMag = lerp(sMin, sMax, t) * (n.speedMul || 1.0);
+        n.speedMag = lerp(SPEED_MIN, SPEED_MAX, n.speedT) * (n.speedMul || 1.0);
         n.tNext = randRange(RETARGET_MIN, RETARGET_MAX);
-        if (n.kind === "jelly" && n.isActive) n.vy = n.speedMag;
-        if (!n.isActive && n.sprite) {
-          const sign = Math.sign(n.sprite.scale.x) || 1;
-          n.sprite.scale.set(Math.abs(n.baseScale) * sign, n.baseScale);
-        }
       }
     }
 
     // 1) mover activos
-    let activeH = 0, activeJ = 0;
+    let active = 0;
 
     for (const n of this.nodes) {
       if (!n.isActive) continue;
 
-      if (n.kind === "jelly") {
-        n.phase = (n.phase ?? 0) + (n.wFreq ?? 1) * dt;
-        const xCenter = n.x0 ?? n.x;
-        n.x = xCenter + Math.sin(n.phase) * (n.wAmp ?? 30);
-        n.y += (n.vy || n.speedMag || 50) * dt;
+      const targetY = (this.laneCenters[n.laneIdx] ?? (h / 2)) + (n.laneOffset || 0);
+      const dy = targetY - n.y;
+      n.vy = dy * 8.0 * dt;
+      n.y += n.vy;
 
-        if (n.y > h + this.bottomMargin + OFF_PAD) {
-          this.deactivateNode(n, RESPAWN_J_MIN, RESPAWN_J_MAX);
-        } else {
-          activeJ++;
-        }
-      } else if (n.kind === "poseidon") {
-        n.pPhase = (n.pPhase ?? 0) + (POSEIDON_FLOAT_FREQ_HZ * Math.PI * 2) * dt;
-        if (n.pSide === "left") n.x = w * POSEIDON_X_LEFT_K;
-        else if (n.pSide === "right") n.x = w * POSEIDON_X_RIGHT_K;
-        else n.x = w * 0.5;
-        const baseY = h * 0.5 + POSEIDON_Y_OFFSET + (n.pYOffset || 0);
-        n.y = baseY + Math.sin(n.pPhase) * POSEIDON_FLOAT_AMP_PX;
-      } else {
-        const targetY = (this.laneCenters[n.laneIdx] ?? (h / 2)) + (n.laneOffset || 0);
-        const dy = targetY - n.y;
-        n.vy = dy * 8.0 * dt;
-        n.y += n.vy;
+      n.vx *= FRICTION;
+      const targetVx = (n.dir === 1 ? 1 : -1) * (n.speedMag || 60);
+      n.vx += (targetVx - n.vx) * THRUST * dt;
 
-        n.vx *= FRICTION;
-        const targetVx = (n.dir === 1 ? 1 : -1) * (n.speedMag || 60);
-        n.vx += (targetVx - n.vx) * THRUST * dt;
+      n.x += n.vx * dt;
 
-        n.x += n.vx * dt;
-
-        if ((n.dir === 1 && n.x > w + OFF_PAD) || (n.dir === -1 && n.x < -OFF_PAD)) {
-          this.deactivateNode(n, RESPAWN_H_MIN, RESPAWN_H_MAX);
-        } else {
-          activeH++;
-        }
+      const pad = OFF_PAD + n.widthPx * 0.5;
+      if ((n.dir === 1 && n.x > w + pad) || (n.dir === -1 && n.x < -pad)) {
+        this.deactivateNode(n);
+        continue;
       }
+      active++;
 
       // Sprite / Label
       if (n.sprite) {
         n.sprite.x = n.x; n.sprite.y = n.y;
-        if (n.kind === "jelly" || n.kind === "poseidon") {
-          n.sprite.scale.x = Math.abs(n.baseScale);
-          n.sprite.scale.y = n.baseScale;
-        } else {
-          const sgn = (n.dir === 1 ? 1 : -1);
-          n.sprite.scale.x = Math.abs(n.baseScale) * sgn;
-          n.sprite.scale.y = n.baseScale;
-        }
+        n.sprite.scale.x = Math.abs(n.baseScale) * n.dir;
+        n.sprite.scale.y = n.baseScale;
       }
       if (n.label) {
-        const halfH = n.sizePx * (BODY_H[n.kind] ?? 0.6) * 0.5;
-        n.label.x = n.x; n.label.y = n.y + halfH + LABEL_GAP;
-        n.label.zIndex = (n.kind === "poseidon") ? Z_LABEL_POSEIDON : Z_LABEL_OTHERS;
+        n.label.x = n.x; n.label.y = n.y + n.sizePx * 0.5 + LABEL_GAP;
+        n.label.zIndex = Z_LABEL;
         n.label.visible = !!n.isActive && !!n.sprite;
       }
     }
 
-    // 2) Headway (Poseidon no participa)
+    // 2) Headway: separación entre asesores del mismo carril y dirección
     const lanesFwd = new Map<number, NodeDatum[]>();
     const lanesBwd = new Map<number, NodeDatum[]>();
     for (const n of this.nodes) {
-      if (!n.isActive || n.kind === "jelly" || n.kind === "poseidon") continue;
+      if (!n.isActive) continue;
       const map = n.dir === 1 ? lanesFwd : lanesBwd;
       const arr = map.get(n.laneIdx) || [];
       arr.push(n);
@@ -1063,7 +668,7 @@ export class Visual implements IVisual {
       arr.sort((a, b) => a.x - b.x);
       for (let i = 1; i < arr.length; i++) {
         const prev = arr[i - 1], cur = arr[i];
-        const minGap = HEADWAY_BASE + HEADWAY_K * 0.5 * (prev.sizePx + cur.sizePx);
+        const minGap = HEADWAY_BASE + HEADWAY_K * 0.5 * (prev.widthPx + cur.widthPx);
         const desiredX = prev.x + minGap;
         const e = desiredX - cur.x;
         if (e > 0) cur.vx += e * HEADWAY_FORCE * dt;
@@ -1073,34 +678,21 @@ export class Visual implements IVisual {
       arr.sort((a, b) => b.x - a.x);
       for (let i = 1; i < arr.length; i++) {
         const prev = arr[i - 1], cur = arr[i];
-        const minGap = HEADWAY_BASE + HEADWAY_K * 0.5 * (prev.sizePx + cur.sizePx);
+        const minGap = HEADWAY_BASE + HEADWAY_K * 0.5 * (prev.widthPx + cur.widthPx);
         const desiredX = prev.x - minGap;
         const e = cur.x - desiredX;
         if (e > 0) cur.vx -= e * HEADWAY_FORCE * dt;
       }
     }
 
-    // 3) activar nuevos según objetivo (poseidon va aparte)
-    if (activeH < ACTIVE_TARGET_H) {
-      const need = ACTIVE_TARGET_H - activeH;
+    // 3) activar nuevos según objetivo
+    if (active < ACTIVE_TARGET) {
+      const need = ACTIVE_TARGET - active;
       const candidates = this.nodes
-        .filter(n => !n.isActive && n.kind !== "jelly" && n.kind !== "poseidon" && this.timeSec >= (n.nextSpawn || 0))
+        .filter(n => !n.isActive && this.timeSec >= (n.nextSpawn || 0))
         .sort((a, b) => (a.nextSpawn || 0) - (b.nextSpawn || 0));
       for (let i = 0; i < Math.min(need, candidates.length); i++) this.activateNode(candidates[i], w, h);
     }
-    if (activeJ < ACTIVE_TARGET_J) {
-      const need = ACTIVE_TARGET_J - activeJ;
-      const candidates = this.nodes
-        .filter(n => !n.isActive && n.kind === "jelly" && this.timeSec >= (n.nextSpawn || 0))
-        .sort((a, b) => (a.nextSpawn || 0) - (b.nextSpawn || 0));
-      for (let i = 0; i < Math.min(need, candidates.length); i++) this.activateNode(candidates[i], w, h);
-    }
-
-    // Activación de poseidones de respaldo
-    const poseidonCandidates = this.nodes
-      .filter(n => !n.isActive && n.kind === "poseidon" && this.timeSec >= (n.nextSpawn || 0))
-      .sort((a, b) => (a.nextSpawn || 0) - (b.nextSpawn || 0));
-    for (const n of poseidonCandidates) this.activateNode(n, w, h);
   }
 
   private clearStage() {
@@ -1124,24 +716,8 @@ export class Visual implements IVisual {
 
       this.clearStage();
 
-      this.seahorseTex?.destroy(true);
-      this.fishTex?.destroy(true);
-      this.doryTex?.destroy(true);
-      this.turtleTex?.destroy(true);
-      this.rayTex?.destroy(true);
-      this.swordTex?.destroy(true);
-      this.dolphinTex?.destroy(true); // ← NUEVO
-      this.hammerTex?.destroy(true);
-      this.sharkTex?.destroy(true);
-      this.poseidon1Tex?.destroy(true);
-      this.poseidon2Tex?.destroy(true);
-      this.poseidon3Tex?.destroy(true);
-      this.poseidon4Tex?.destroy(true);
-      this.unknownPoseidonTex?.destroy(true);
-      for (const tex of this.advisorPoseidonTex.values()) tex.destroy(true);
-      this.advisorPoseidonTex.clear();
-      this.advisorPoseidonBaseW.clear();
-      this.jellyTex?.destroy(true);
+      for (const tex of this.advisorTex.values()) tex.destroy(true);
+      this.advisorTex.clear();
       this.app?.destroy(true);
     } catch { /* noop */ }
   }

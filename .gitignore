@@ -1,1 +1,4 @@
 .tmp/
+fotos-originales/
+assets/advisors/*/
+dist/*.pbiviz
