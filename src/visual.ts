@@ -45,6 +45,9 @@ const RETARGET_MAX     = 6.5;
 // Velocidad (px/s): las matrículas aceleran un poco, sin cambiar el tamaño
 const SPEED_MIN        = 70;
 const SPEED_MAX        = 130;
+// Cada asesor vuela a SU ritmo: multiplicador aleatorio que se vuelve a sortear en cada pasada
+const SPEED_MUL_MIN    = 0.7;
+const SPEED_MUL_MAX    = 1.35;
 
 // Headway por carril/dirección (evita pelotones/"choques")
 const HEADWAY_BASE     = 40;
@@ -59,7 +62,12 @@ const RESPAWN_MIN      = 5;
 const RESPAWN_MAX      = 12;
 
 // Escalonado inicial
-const SPAWN_STAGGER_S  = 12;
+const SPAWN_STAGGER_S  = 4;
+// Entradas: separadas en el tiempo y a distinta distancia del borde (nunca en fila)
+const SPAWN_GAP_MIN_S  = 0.3;
+const SPAWN_GAP_MAX_S  = 1.4;
+const ENTRY_EXTRA_MAX  = 350;    // px extra fuera del borde antes de entrar
+const FADE_IN_S        = 0.6;    // aparición suave de los que salen ya en pantalla
 
 // Etiquetas
 const NAME_FONT_SIZE   = 14;
@@ -71,6 +79,30 @@ const LABEL_SAFE_K     = 1.3;
 // Z-order
 const Z_SPRITE         = 300;
 const Z_LABEL          = 350;
+const Z_SNITCH         = 700;   // por delante de asesores y etiquetas
+
+/** ====== Snitch dorada (assets/snitch.png + assets/wings.png) ======
+ * snitch.png: la bola; wings.png: UN ala con la base en el borde izquierdo
+ * (se duplica y se voltea para la otra). Vuela sola con movimiento errático.
+ */
+const snitchUrl: string = require("../assets/snitch.png");
+const wingsUrl:  string = require("../assets/wings.png");
+
+const SNITCH_BODY_PX     = 16;    // ancho de la bola
+const SNITCH_WING_PX     = 34;    // largo de cada ala
+const SNITCH_SOCKET_X    = 0.03;  // enchufe de las alas: distancia al borde de la bola (0..1 del ancho)
+const SNITCH_SOCKET_Y    = 0.479; // enchufe de las alas: altura (0..1 del alto de la bola)
+const WING_PIVOT_Y       = 0.749; // base del ala en wings.png: altura (0..1 del alto)
+const SNITCH_MARGIN      = 50;    // distancia mínima a los bordes
+const SNITCH_MAX_SPEED   = 520;   // px/s
+const SNITCH_ACCEL       = 2200;  // px/s²
+const SNITCH_JITTER      = 900;   // temblor aleatorio (px/s²)
+const SNITCH_DAMPING     = 0.2;   // fracción de velocidad que se conserva por segundo
+const SNITCH_FLAP_HZ     = 11;    // aleteos por segundo
+const SNITCH_FLAP_AMP    = 0.6;   // rad
+const SNITCH_FLAP_BASE   = -0.1;  // rad (ángulo medio del ala)
+const SNITCH_TRAIL_MAX   = 36;    // destellos simultáneos de la estela
+const SNITCH_TRAIL_LIFE  = 0.55;  // s
 
 /** Utilidades **/
 let fallbackRandSeed = 0x9e3779b9;
@@ -129,6 +161,9 @@ interface NodeDatum {
   isActive: boolean;
   nextSpawn: number;
   dir: 1 | -1;
+
+  hasEntered: boolean; // false hasta su primera salida (esa aparece en un punto al azar de la pantalla)
+  fade: number;        // 0..FADE_IN_S de aparición
 }
 
 export class Visual implements IVisual {
@@ -144,7 +179,22 @@ export class Visual implements IVisual {
   private advisorTex = new Map<string, PIXI.Texture>();
   private texReady = false;
 
+  // Snitch
+  private snitchTex?: PIXI.Texture;
+  private wingsTex?: PIXI.Texture;
+  private glowTex?: PIXI.Texture;
+  private snitch?: PIXI.Container;
+  private snitchWingL?: PIXI.Sprite;
+  private snitchWingR?: PIXI.Sprite;
+  private snitchGlow?: PIXI.Sprite;
+  private snitchTrail: Array<{ s: PIXI.Sprite; life: number; vx: number; vy: number }> = [];
+  private snitchState = {
+    x: 0, y: 0, vx: 0, vy: 0, tx: 0, ty: 0,
+    tRetarget: 0, boost: 1, flap: 0, trailT: 0
+  };
+
   private nodes: NodeDatum[] = [];
+  private nextActivationT = 0;
   private tickBound?: (delta: number) => void;
 
   // Layout vertical
@@ -283,6 +333,11 @@ export class Visual implements IVisual {
     }
     this.texReady = this.advisorTex.size > 0;
 
+    const [snitchTex, wingsTex] = await Promise.all([this.loadOne(snitchUrl), this.loadOne(wingsUrl)]);
+    if (snitchTex) this.snitchTex = snitchTex;
+    if (wingsTex)  this.wingsTex = wingsTex;
+    this.ensureSnitch();
+
     if (this.stage && this.nodes?.length) {
       this.ensureSpritesAndLabels();
       this.needsRebuild = true;
@@ -364,7 +419,7 @@ export class Visual implements IVisual {
 
     const avail = Math.max(1, h - this.topMargin - this.bottomMargin);
     const laneH = this.spriteH + LABEL_GAP + labelH;
-    const fit = Math.max(1, Math.floor(avail / laneH) + 1);
+    const fit = Math.max(1, Math.floor(avail / laneH));
     const wanted = Math.max(1, Math.ceil(count / 2));
     this.laneCount = Math.min(wanted, fit);
 
@@ -400,7 +455,7 @@ export class Visual implements IVisual {
       const laneIdx = clamp(laneById.get(it.id) ?? 0, 0, Math.max(0, this.laneCount - 1));
 
       const speedT = (effValue === undefined || vMax === vMin) ? 0.5 : clamp((effValue - vMin) / (vMax - vMin), 0, 1);
-      const speedMul = prev?.speedMul ?? randRange(0.9, 1.1);
+      const speedMul = prev?.speedMul ?? randRange(SPEED_MUL_MIN, SPEED_MUL_MAX);
       const baseSpeed = lerp(SPEED_MIN, SPEED_MAX, speedT) * speedMul;
 
       let n = prev;
@@ -420,6 +475,8 @@ export class Visual implements IVisual {
           speedMul,
           tNext: randRange(RETARGET_MIN, RETARGET_MAX),
           isActive: false,
+          hasEntered: false,
+          fade: 1,
           nextSpawn: now + ((hash32(it.id) % 1000) / 1000) * SPAWN_STAGGER_S,
           dir: rand01() > 0.5 ? 1 : -1
         };
@@ -531,6 +588,7 @@ export class Visual implements IVisual {
       }
       if (n.label) n.label.visible = false;
     });
+    this.ensureSnitch(true);
     if (!this.texReady) return;
     this.ensureSpritesAndLabels();
     this.nodes.forEach(n => {
@@ -549,28 +607,51 @@ export class Visual implements IVisual {
     n.isActive = true;
     n.dir = rand01() > 0.5 ? 1 : -1;
 
+    // ritmo propio en cada pasada
+    n.speedMul = randRange(SPEED_MUL_MIN, SPEED_MUL_MAX);
+    n.speedMag = lerp(SPEED_MIN, SPEED_MAX, n.speedT) * n.speedMul;
+
     const avail = Math.max(1, h - this.topMargin - this.bottomMargin);
     const step = avail / Math.max(1, this.laneCount);
     const yCenter = this.laneCenters[n.laneIdx] ?? (h / 2);
     const jitter = clamp(randRange(-step * 0.25, step * 0.25), -step * 0.3, step * 0.3);
     n.laneOffset = jitter;
 
-    const pad = OFF_PAD + n.widthPx * 0.5;
     n.y = yCenter + (n.laneOffset || 0);
-    if (n.dir === 1) { n.x = -pad;      n.vx =  Math.abs(n.speedMag); }
-    else             { n.x =  w + pad;  n.vx = -Math.abs(n.speedMag); }
     n.vy = 0;
+
+    if (!n.hasEntered) {
+      // primera salida: aparece ya volando en un punto horizontal al azar (sin chocar con otro del carril)
+      const peers = this.nodes.filter(p => p !== n && p.isActive && p.laneIdx === n.laneIdx && p.dir === n.dir);
+      let x = randRange(w * 0.05, w * 0.95);
+      for (let tries = 0; tries < 8; tries++) {
+        const ok = peers.every(p => Math.abs(p.x - x) >= HEADWAY_BASE + 0.5 * (p.widthPx + n.widthPx));
+        if (ok) break;
+        x = randRange(w * 0.05, w * 0.95);
+      }
+      n.x = x;
+      n.fade = 0;
+    } else {
+      // resto de salidas: entra por un borde, a distinta distancia para no ir en fila
+      const pad = OFF_PAD + n.widthPx * 0.5 + randRange(0, ENTRY_EXTRA_MAX);
+      n.x = n.dir === 1 ? -pad : w + pad;
+      n.fade = 1;
+    }
+    n.hasEntered = true;
+    n.vx = n.dir * Math.abs(n.speedMag);
 
     if (n.sprite) {
       n.sprite.visible = true;
       n.sprite.x = n.x; n.sprite.y = n.y;
       n.sprite.scale.x = Math.abs(n.baseScale) * n.dir;
       n.sprite.scale.y = n.baseScale;
+      n.sprite.alpha = Math.min(1, n.fade / FADE_IN_S);
     }
     if (n.label) {
       n.label.visible = !!n.sprite;
       n.label.x = n.x; n.label.y = n.y + n.sizePx * 0.5 + LABEL_GAP;
       n.label.zIndex = Z_LABEL;
+      n.label.alpha = Math.min(1, n.fade / FADE_IN_S);
     }
   }
 
@@ -641,16 +722,21 @@ export class Visual implements IVisual {
       }
       active++;
 
+      if (n.fade < FADE_IN_S) n.fade += dt;
+      const alpha = Math.min(1, n.fade / FADE_IN_S);
+
       // Sprite / Label
       if (n.sprite) {
         n.sprite.x = n.x; n.sprite.y = n.y;
         n.sprite.scale.x = Math.abs(n.baseScale) * n.dir;
         n.sprite.scale.y = n.baseScale;
+        n.sprite.alpha = alpha;
       }
       if (n.label) {
         n.label.x = n.x; n.label.y = n.y + n.sizePx * 0.5 + LABEL_GAP;
         n.label.zIndex = Z_LABEL;
         n.label.visible = !!n.isActive && !!n.sprite;
+        n.label.alpha = alpha;
       }
     }
 
@@ -685,19 +771,188 @@ export class Visual implements IVisual {
       }
     }
 
-    // 3) activar nuevos según objetivo
-    if (active < ACTIVE_TARGET) {
-      const need = ACTIVE_TARGET - active;
-      const candidates = this.nodes
+    // 3) activar nuevos según objetivo: de uno en uno y con pausas al azar (nunca en bloque)
+    if (active < ACTIVE_TARGET && this.timeSec >= this.nextActivationT) {
+      const next = this.nodes
         .filter(n => !n.isActive && this.timeSec >= (n.nextSpawn || 0))
-        .sort((a, b) => (a.nextSpawn || 0) - (b.nextSpawn || 0));
-      for (let i = 0; i < Math.min(need, candidates.length); i++) this.activateNode(candidates[i], w, h);
+        .sort((a, b) => (a.nextSpawn || 0) - (b.nextSpawn || 0))[0];
+      if (next) {
+        this.activateNode(next, w, h);
+        this.nextActivationT = this.timeSec + randRange(SPAWN_GAP_MIN_S, SPAWN_GAP_MAX_S);
+      }
+    }
+
+    // 4) snitch
+    this.updateSnitch(dt, w, h);
+  }
+
+  /** Textura de brillo dorado (gradiente radial), para el halo y la estela */
+  private getGlowTex(): PIXI.Texture {
+    if (this.glowTex) return this.glowTex;
+    const c = document.createElement("canvas");
+    c.width = c.height = 128;
+    const g = c.getContext("2d")!;
+    const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, "rgba(255,236,150,0.9)");
+    gr.addColorStop(0.35, "rgba(255,200,60,0.35)");
+    gr.addColorStop(1, "rgba(255,190,40,0)");
+    g.fillStyle = gr;
+    g.fillRect(0, 0, 128, 128);
+    this.glowTex = PIXI.Texture.from(c);
+    return this.glowTex;
+  }
+
+  /** Crea (o recrea) la snitch: halo + alas (detrás) + bola */
+  private ensureSnitch(force = false) {
+    if (!this.stage || !this.snitchTex || !this.wingsTex) return;
+    if (this.snitch && !force) return;
+    this.destroySnitch();
+
+    const bodyW = SNITCH_BODY_PX;
+    const bodyH = SNITCH_BODY_PX * this.snitchTex.height / this.snitchTex.width;
+    const wingScale = SNITCH_WING_PX / this.wingsTex.width;
+    const sockX = bodyW * (0.5 - SNITCH_SOCKET_X);
+    const sockY = (SNITCH_SOCKET_Y - 0.5) * bodyH;
+
+    const root = new PIXI.Container();
+    root.zIndex = Z_SNITCH;
+
+    const glow = new PIXI.Sprite(this.getGlowTex());
+    glow.anchor.set(0.5);
+    glow.width = glow.height = bodyW * 3.4;
+    glow.blendMode = PIXI.BLEND_MODES.ADD;
+
+    const wingR = new PIXI.Sprite(this.wingsTex);
+    wingR.anchor.set(0, WING_PIVOT_Y);
+    wingR.scale.set(wingScale);
+    wingR.position.set(sockX, sockY);
+
+    const wingL = new PIXI.Sprite(this.wingsTex);
+    wingL.anchor.set(0, WING_PIVOT_Y);
+    wingL.scale.set(-wingScale, wingScale);
+    wingL.position.set(-sockX, sockY);
+
+    const body = new PIXI.Sprite(this.snitchTex);
+    body.anchor.set(0.5);
+    body.width = bodyW; body.height = bodyH;
+
+    root.addChild(glow, wingL, wingR, body);
+    this.stage.addChild(root);
+
+    this.snitch = root;
+    this.snitchGlow = glow;
+    this.snitchWingL = wingL;
+    this.snitchWingR = wingR;
+
+    // posición inicial aleatoria
+    const w = this.root.clientWidth || 1;
+    const h = this.root.clientHeight || 1;
+    const st = this.snitchState;
+    st.x = randRange(SNITCH_MARGIN, Math.max(SNITCH_MARGIN, w - SNITCH_MARGIN));
+    st.y = randRange(SNITCH_MARGIN, Math.max(SNITCH_MARGIN, h - SNITCH_MARGIN));
+    st.vx = st.vy = 0;
+    st.tx = st.x; st.ty = st.y;
+    st.tRetarget = 0;
+    root.position.set(st.x, st.y);
+  }
+
+  private destroySnitch() {
+    for (const p of this.snitchTrail) p.s.destroy();
+    this.snitchTrail = [];
+    if (this.snitch) {
+      this.snitch.parent?.removeChild(this.snitch);
+      this.snitch.destroy({ children: true });
+    }
+    this.snitch = this.snitchWingL = this.snitchWingR = this.snitchGlow = undefined;
+  }
+
+  /** Vuelo errático: objetivos al azar cada fracción de segundo, arrancadas y temblor */
+  private updateSnitch(dt: number, w: number, h: number) {
+    const sn = this.snitch;
+    if (!sn || !this.stage) return;
+    const st = this.snitchState;
+    const mX = Math.min(SNITCH_MARGIN, w / 2), mY = Math.min(SNITCH_MARGIN, h / 2);
+
+    // nuevo objetivo: a veces cerca (zigzag), a veces lejos (arrancada)
+    st.tRetarget -= dt;
+    if (st.tRetarget <= 0) {
+      const far = rand01() < 0.3;
+      const reach = far ? Math.max(w, h) * 0.6 : Math.min(w, h) * 0.3;
+      const ang = rand01() * Math.PI * 2;
+      const dist = reach * (0.4 + rand01() * 0.6);
+      st.tx = clamp(st.x + Math.cos(ang) * dist, mX, w - mX);
+      st.ty = clamp(st.y + Math.sin(ang) * dist, mY, h - mY);
+      st.tRetarget = far ? randRange(0.5, 0.9) : randRange(0.15, 0.45);
+      st.boost = far ? 1.4 : 1;
+    }
+
+    // aceleración hacia el objetivo + temblor
+    const dx = st.tx - st.x, dy = st.ty - st.y;
+    const d = Math.hypot(dx, dy) || 1;
+    st.vx += ((dx / d) * SNITCH_ACCEL + randRange(-1, 1) * SNITCH_JITTER) * dt;
+    st.vy += ((dy / d) * SNITCH_ACCEL + randRange(-1, 1) * SNITCH_JITTER) * dt;
+    const damp = Math.pow(SNITCH_DAMPING, dt);
+    st.vx *= damp; st.vy *= damp;
+    const maxV = SNITCH_MAX_SPEED * st.boost;
+    const sp = Math.hypot(st.vx, st.vy);
+    if (sp > maxV) { st.vx *= maxV / sp; st.vy *= maxV / sp; }
+
+    st.x += st.vx * dt;
+    st.y += st.vy * dt;
+
+    // rebote suave en los bordes
+    if (st.x < mX)     { st.x = mX;     st.vx =  Math.abs(st.vx) * 0.6; }
+    if (st.x > w - mX) { st.x = w - mX; st.vx = -Math.abs(st.vx) * 0.6; }
+    if (st.y < mY)     { st.y = mY;     st.vy =  Math.abs(st.vy) * 0.6; }
+    if (st.y > h - mY) { st.y = h - mY; st.vy = -Math.abs(st.vy) * 0.6; }
+
+    // sprite: se inclina hacia donde va
+    sn.position.set(st.x, st.y);
+    sn.rotation = clamp(st.vx / SNITCH_MAX_SPEED, -1, 1) * 0.35;
+
+    // aleteo: las dos alas en espejo
+    st.flap += SNITCH_FLAP_HZ * Math.PI * 2 * dt;
+    const ang = SNITCH_FLAP_BASE + Math.sin(st.flap) * SNITCH_FLAP_AMP;
+    if (this.snitchWingR) this.snitchWingR.rotation = ang;
+    if (this.snitchWingL) this.snitchWingL.rotation = -ang;
+
+    // halo que late
+    if (this.snitchGlow) this.snitchGlow.alpha = 0.65 + 0.25 * Math.sin(this.timeSec * 6);
+
+    // estela de destellos
+    st.trailT -= dt;
+    if (st.trailT <= 0 && sp > 60) {
+      st.trailT = 0.03;
+      let p = this.snitchTrail.find(t => t.life <= 0);
+      if (!p && this.snitchTrail.length < SNITCH_TRAIL_MAX) {
+        const sp2 = new PIXI.Sprite(this.getGlowTex());
+        sp2.anchor.set(0.5);
+        sp2.blendMode = PIXI.BLEND_MODES.ADD;
+        sp2.tint = 0xffe08a;
+        sp2.zIndex = Z_SNITCH - 1;
+        this.stage.addChild(sp2);
+        p = { s: sp2, life: 0, vx: 0, vy: 0 };
+        this.snitchTrail.push(p);
+      }
+      if (p) {
+        p.life = SNITCH_TRAIL_LIFE;
+        p.vx = randRange(-25, 25); p.vy = randRange(-25, 25);
+        p.s.position.set(st.x + randRange(-6, 6), st.y + randRange(-6, 6));
+        p.s.visible = true;
+      }
+    }
+    for (const p of this.snitchTrail) {
+      if (p.life <= 0) { p.s.visible = false; continue; }
+      p.life -= dt;
+      const k = Math.max(0, p.life / SNITCH_TRAIL_LIFE);
+      p.s.x += p.vx * dt; p.s.y += p.vy * dt;
+      p.s.alpha = k * 0.8;
+      p.s.width = p.s.height = SNITCH_BODY_PX * (0.25 + 0.5 * k);
     }
   }
 
   private clearStage() {
     if (!this.stage) return;
-    this.stage.removeChildren();
     this.nodes.forEach(n => {
       n.sprite?.destroy();
       if (n.label) n.label.destroy({ children: true });
@@ -715,6 +970,10 @@ export class Visual implements IVisual {
       if (this.visHandler) document.removeEventListener("visibilitychange", this.visHandler);
 
       this.clearStage();
+      this.destroySnitch();
+      this.snitchTex?.destroy(true);
+      this.wingsTex?.destroy(true);
+      this.glowTex?.destroy(true);
 
       for (const tex of this.advisorTex.values()) tex.destroy(true);
       this.advisorTex.clear();
