@@ -67,7 +67,7 @@ const SPAWN_STAGGER_S  = 4;
 const SPAWN_GAP_MIN_S  = 0.3;
 const SPAWN_GAP_MAX_S  = 1.4;
 const ENTRY_EXTRA_MAX  = 350;    // px extra fuera del borde antes de entrar
-const FADE_IN_S        = 0.6;    // aparición suave de los que salen ya en pantalla
+const FADE_IN_S        = 0.6;    // duración del fade de aparición (hoy todos entran ya opacos desde fuera)
 
 // Etiquetas
 const NAME_FONT_SIZE   = 14;
@@ -162,7 +162,7 @@ interface NodeDatum {
   nextSpawn: number;
   dir: 1 | -1;
 
-  hasEntered: boolean; // false hasta su primera salida (esa aparece en un punto al azar de la pantalla)
+  hasEntered: boolean; // false hasta su primera salida
   fade: number;        // 0..FADE_IN_S de aparición
 }
 
@@ -620,23 +620,11 @@ export class Visual implements IVisual {
     n.y = yCenter + (n.laneOffset || 0);
     n.vy = 0;
 
-    if (!n.hasEntered) {
-      // primera salida: aparece ya volando en un punto horizontal al azar (sin chocar con otro del carril)
-      const peers = this.nodes.filter(p => p !== n && p.isActive && p.laneIdx === n.laneIdx && p.dir === n.dir);
-      let x = randRange(w * 0.05, w * 0.95);
-      for (let tries = 0; tries < 8; tries++) {
-        const ok = peers.every(p => Math.abs(p.x - x) >= HEADWAY_BASE + 0.5 * (p.widthPx + n.widthPx));
-        if (ok) break;
-        x = randRange(w * 0.05, w * 0.95);
-      }
-      n.x = x;
-      n.fade = 0;
-    } else {
-      // resto de salidas: entra por un borde, a distinta distancia para no ir en fila
-      const pad = OFF_PAD + n.widthPx * 0.5 + randRange(0, ENTRY_EXTRA_MAX);
-      n.x = n.dir === 1 ? -pad : w + pad;
-      n.fade = 1;
-    }
+    // Todas las salidas (también la primera) entran desde FUERA del lienzo por el borde
+    // lateral, a distinta distancia para no ir en fila. Nunca aparecen dentro de la pantalla.
+    const pad = OFF_PAD + n.widthPx * 0.5 + randRange(0, ENTRY_EXTRA_MAX);
+    n.x = n.dir === 1 ? -pad : w + pad;
+    n.fade = FADE_IN_S;
     n.hasEntered = true;
     n.vx = n.dir * Math.abs(n.speedMag);
 
@@ -772,7 +760,8 @@ export class Visual implements IVisual {
     }
 
     // 3) activar nuevos según objetivo: de uno en uno y con pausas al azar (nunca en bloque)
-    if (active < ACTIVE_TARGET && this.timeSec >= this.nextActivationT) {
+    // (solo con las fotos cargadas: si no, el sprite se crearía a mitad de camino y aparecería de golpe)
+    if (this.texReady && active < ACTIVE_TARGET && this.timeSec >= this.nextActivationT) {
       const next = this.nodes
         .filter(n => !n.isActive && this.timeSec >= (n.nextSpawn || 0))
         .sort((a, b) => (a.nextSpawn || 0) - (b.nextSpawn || 0))[0];
