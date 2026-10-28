@@ -9,15 +9,16 @@ import * as PIXI from "pixi.js";
 declare const require: any;
 
 /** ====== Fotos de asesores ======
- * Se cargan automáticamente todos los .png de assets/advisors/ y de sus
- * subcarpetas (una por equipo: A1, A2, B1...); la carpeta solo organiza.
+ * Rama ESD: se cargan solo los .png de las subcarpetas de equipo E1, E2, E3...
+ * de assets/advisors/ (más unknown.png); las carpetas de OBS (A1, B1...) que
+ * pudieran existir en disco se ignoran y no entran al paquete. La carpeta solo organiza.
  * El nombre del archivo identifica al asesor (se normaliza igual que el nombre
  * que llega de Power BI: sin tildes, minúsculas, separadores -> espacio):
  *   "Agustin Oregioni"  <->  agustin-oregioni.png / agustin_oregioni.png
  * Las fotos van en la MISMA orientación: mirando hacia la DERECHA.
  * Si un asesor no tiene foto se usa unknown.png.
  */
-const advisorCtx = require.context("../assets/advisors", true, /\.png$/i);
+const advisorCtx = require.context("../assets/advisors", true, /^\.\/(E\d+\/[^/]+|unknown)\.png$/i);
 const UNKNOWN_KEY = "unknown";
 const ADVISOR_URLS: Record<string, string> = {};
 for (const k of advisorCtx.keys() as string[]) {
