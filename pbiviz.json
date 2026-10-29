@@ -4,8 +4,8 @@
     "displayName": "obsHarryPotter",
     "guid": "obsHarryPotterE3585D72A86C4A209E34B930D63E78E6",
     "visualClassName": "Visual",
-    "version": "1.0.0.3",
-    "description": "Dashboard visual for Harry Potter simulation",
+    "version": "1.0.0.5",
+    "description": "Dashboard visual for Harry Potter Quidditch game simulation",
     "supportUrl": "www.prueba.com",
     "gitHubUrl": ""
   },
@@ -17,5 +17,5 @@
   "capabilities": "capabilities.json",
   "dependencies": "dependencies.json",
   "stringResources": [],
-  "version": "1.0.0.3"
+  "version": "1.0.0.5"
 }

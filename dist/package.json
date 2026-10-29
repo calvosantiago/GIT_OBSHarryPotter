@@ -1,5 +1,5 @@
 {
-		"version": "1.0.0.3",
+		"version": "1.0.0.5",
 		"author": {"name":"Santiago","email":"santiago.calvo@planetaformacion.com"},
 		"resources": [
 			{
@@ -8,7 +8,7 @@
 				"file": "resources/obsHarryPotterE3585D72A86C4A209E34B930D63E78E6.pbiviz.json"
 			}
 		],
-		"visual": {"name":"obsHarryPotter","displayName":"obsHarryPotter","guid":"obsHarryPotterE3585D72A86C4A209E34B930D63E78E6","visualClassName":"Visual","version":"1.0.0.3","description":"Dashboard visual for Harry Potter simulation","supportUrl":"www.prueba.com","gitHubUrl":""},
+		"visual": {"name":"obsHarryPotter","displayName":"obsHarryPotter","guid":"obsHarryPotterE3585D72A86C4A209E34B930D63E78E6","visualClassName":"Visual","version":"1.0.0.5","description":"Dashboard visual for Harry Potter Quidditch game simulation","supportUrl":"www.prueba.com","gitHubUrl":""},
 		"metadata": {
 			"pbivizjson": {
 				"resourceId": "rId0"
